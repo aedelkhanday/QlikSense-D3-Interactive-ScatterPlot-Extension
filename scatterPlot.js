@@ -10,8 +10,9 @@ define([
 		"jquery",
 		'qlik',
 		"text!./scatterCss.css",
-		"text!./dragit.css",
 		"/extensions/scatterPlot/d3.v3.min.js",
+		"/extensions/scatterPlot/d3Utils.js",
+		"text!./dragit.css",
 		"/extensions/scatterPlot/nationjson.js",
 		"/extensions/scatterPlot/dragit.js"], 
 	function($,qlik, cssContent) {
@@ -56,12 +57,27 @@ define([
 		
 paint: function($element, layout) {
 // Various accessors that specify the four dimensions of data to visualize.
-function x(d) { return d.income; }
+/*function x(d) { return d.income; }
 function y(d) { return d.lifeExpectancy; }
 function radius(d) { return d.population; }
 function color(d) { return d.region; }
-function key(d) { return d.name; }
+*/
+var mes1 = (layout.qHyperCube.qMeasureInfo[0].qFallbackTitle).toLowerCase();
+var mes2 = (layout.qHyperCube.qMeasureInfo[1].qFallbackTitle).toLowerCase();
+var mes3 = (layout.qHyperCube.qMeasureInfo[2].qFallbackTitle).toLowerCase();
 
+function x(d) { 
+	if(d[mes1] == 0)
+		return 4000;
+	return d[mes1]; }
+function y(d) { return d[mes2]; }
+function radius(d) { return d[mes3]; }
+function color(d) { return d.region; }
+function key(d) { return d.name; }
+var dataSet = layout.qHyperCube.qDataPages[0].qMatrix;
+var numDims = layout.qHyperCube.qDimensionInfo.length;
+var numMsrs = layout.qHyperCube.qMeasureInfo.length;
+var msrInfo = layout.qHyperCube.qMeasureInfo;
 /*setTimeout(function() {
     var headID = document.getElementsByTagName("head")[0];         
     var newScript = document.createElement('script');
@@ -85,19 +101,23 @@ var margin = {top: 19.5, right: 19.5, bottom: 19.5, left: 39.5},
     width = 960 - margin.right,
     height = 500 - margin.top - margin.bottom;
 // Various scales. These domains make assumptions of data, naturally.
-var xScale = d3.scale.log().domain([300, 1e5]).range([0, width]),
-    yScale = d3.scale.linear().domain([10, 85]).range([height, 0]),
-    radiusScale = d3.scale.sqrt().domain([0, 5e8]).range([0, 40]),
+var maxMinMsr1 = senseD3.getMaxMinMeasure(dataSet,1);
+var maxMinMsr2 = senseD3.getMaxMinMeasure(dataSet,2);
+var maxMinMsr3 = senseD3.getMaxMinMeasure(dataSet,3);
+
+var xScale = d3.scale.linear().domain([maxMinMsr1.min, maxMinMsr1.max]).range([0, width]),
+    yScale = d3.scale.linear().domain([maxMinMsr2.min, maxMinMsr2.max]).range([height, 0]),
+    radiusScale = d3.scale.sqrt().domain([maxMinMsr3.min, maxMinMsr3.max]).range([0, 40]),
     colorScale = d3.scale.category10();
 // The x & y axes.
 var xAxis = d3.svg.axis().orient("bottom").scale(xScale).ticks(12, d3.format(",d")),
     yAxis = d3.svg.axis().scale(yScale).orient("left");
 // Create the SVG container and set the origin.
 var svg = d3.select("#" + id).append("svg")
-    .attr("width", width + margin.left + margin.right)
+    .attr("width", width + margin.left + margin.right + 50)
     .attr("height", height + margin.top + margin.bottom)
   .append("g")
-    .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+    .attr("transform", "translate(" + (margin.left + 40) + "," + margin.top + ")")
     .attr("class", "gRoot")
 // Add the x-axis.
 svg.append("g")
@@ -109,12 +129,22 @@ svg.append("g")
     .attr("class", "y axis")
     .call(yAxis);
 // Add an x-axis label.
+
+svg.append("path")
+  .attr("class","axisnew")
+  .attr("d","M0,"+height/2+" L"+width+","+height/2);
+//y axis
+svg.append("path")
+  .attr("class","axisnew")
+  .attr("d","M"+width/2+",0 L"+width/2+","+height);
+
+
 svg.append("text")
     .attr("class", "x label")
     .attr("text-anchor", "end")
     .attr("x", width)
     .attr("y", height - 6)
-    .text("income per capita, inflation-adjusted (dollars)");
+    .text(layout.qHyperCube.qMeasureInfo[0].qFallbackTitle);
 // Add a y-axis label.
 svg.append("text")
     .attr("class", "y label")
@@ -122,14 +152,14 @@ svg.append("text")
     .attr("y", 6)
     .attr("dy", ".75em")
     .attr("transform", "rotate(-90)")
-    .text("life expectancy (years)");
+    .text(layout.qHyperCube.qMeasureInfo[1].qFallbackTitle);
 // Add the year label; the value is set on transition.
 var label = svg.append("text")
     .attr("class", "year label")
     .attr("text-anchor", "end")
     .attr("y", height - 24)
     .attr("x", width)
-    .text(1800);
+    .text(2013);
 // Add the country label; the value is set on transition.
 var countrylabel = svg.append("text")
     .attr("class", "country label")
@@ -139,14 +169,16 @@ var countrylabel = svg.append("text")
     .text(" ");
 var first_time = true;
 // Load the data.
-var nations = nationsJson;
+//var nations = nationsJson;
+var data = senseD3.createData(dataSet, numDims,msrInfo);
+var nations = data;
   // A bisector since many nation's data is sparsely-defined.
   var bisect = d3.bisector(function(d) { return d[0]; });
   // Add a dot per nation. Initialize the data at 1800, and set the colors.
   var dot = svg.append("g")
       .attr("class", "dots")
     .selectAll(".dot")
-      .data(interpolateData(1800))
+      .data(interpolateData(2013))// Hardcoded year here
     .enter().append("circle")
       .attr("class", "dot")
       .style("fill", function(d) { return colorScale(color(d)); })
@@ -189,9 +221,18 @@ var nations = nationsJson;
       .ease("linear")
   // Positions the dots based on data.
   function position(dot) {
-    dot.attr("cx", function(d) { return xScale(x(d)); })
-       .attr("cy", function(d) { return yScale(y(d)); })
-       .attr("r", function(d) { return radiusScale(radius(d)); });
+    dot.attr("cx", function(d) { 
+			var xScl = xScale(x(d));
+			return xScl;
+		})
+       .attr("cy", function(d) { 
+	   		var yScl = yScale(y(d));
+	   		return yScl; 
+		})
+       .attr("r", function(d) { 
+	   		var rad = radiusScale(radius(d));
+	   		return rad; 
+		});
   }
   // Defines a sort order so that the smallest dots are drawn on top.
   function order(a, b) {
@@ -203,7 +244,7 @@ var nations = nationsJson;
     label.text(dragit.time.min + Math.round(year));
   }
   // Interpolates the dataset for the given (fractional) year.
-  function interpolateData(year) {
+ /* function interpolateData(year) {
     return nations.map(function(d) {
       return {
         name: d.name,
@@ -211,6 +252,16 @@ var nations = nationsJson;
         income: interpolateValues(d.income, year),
         population: interpolateValues(d.population, year),
         lifeExpectancy: interpolateValues(d.lifeExpectancy, year)
+      };
+    });
+  }*/
+  function interpolateData(year) {
+    return nations.map(function(d) {
+      return {
+        name: d.name,
+        spend: interpolateValues(d.Spend, year),
+        maco: interpolateValues(d.MaCo, year),
+        volume: interpolateValues(d.Volume, year)
       };
     });
   }
@@ -234,9 +285,11 @@ var nations = nationsJson;
   }
   function init() {
     dragit.init(".gRoot");
-    dragit.time = {min:1800, max:2009, step:1, current:1800}
+    //dragit.time = {min:1800, max:2009, step:1, current:1800} Adil - hardcoded here
+	dragit.time = {min:2013, max:2018, step:1, current:2013}
     dragit.data = d3.range(nations.length).map(function() { return Array(); })
-    for(var yy = 1800; yy<2009; yy++) {
+    //for(var yy = 1800; yy<2009; yy++) { Adil - hardcoded here
+	for(var yy = 2013; yy<2018; yy++) {
       interpolateData(yy).filter(function(d, i) { 
         dragit.data[i][yy-dragit.time.min] = [xScale(x(d)), yScale(y(d))];
       })
@@ -258,39 +311,12 @@ function clear_demo() {
   if(first_time) {
      svg.transition().duration(0);
     first_time = false;
-    window.clearInterval(demo_interval);
+    //window.clearInterval(demo_interval);
     countrylabel.text("");
     dragit.trajectory.removeAll();
     d3.selectAll(".dot").style("opacity", 1)
   }
 }
-function play_demo() {
-  var ex_nations = ["China", "India", "Indonesia", "Italy", "France", "Spain", "Germany", "United States"]
-  var index_random_nation = null;
-  var random_index = Math.floor(Math.random() * ex_nations.length);
-  var random_nation = nations.filter(function(d, i) { 
-    if(d.name == ex_nations[random_index]) {
-      index_random_nation = i;
-      return true;
-    }
-  })[0];
-  var random_nation = nations[index_random_nation];
-  dragit.trajectory.removeAll();
-  dragit.trajectory.display(random_nation, index_random_nation);
-  countrylabel.text(random_nation.name);
-  dragit.utils.animateTrajectory(dragit.lineTrajectory, dragit.time.min, 2000)
-  d3.selectAll(".dot").style("opacity", .4)
-  d3.selectAll(".dot").filter(function(d) {
-    return d.name == random_nation.name;
-  }).style("opacity", 1)
-}
-var demo_interval = null;
-/*setTimeout(function() {
-  if(first_time) {
-    play_demo()
-    demo_interval = setInterval(play_demo, 3000)
-  }
-}, 1000);*/
 }
 };
 }
